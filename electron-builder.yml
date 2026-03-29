@@ -1,0 +1,24 @@
+appId: com.dynoip.desktop
+productName: DynoIP
+directories:
+  buildResources: build
+  output: dist
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.*'
+  - '!{.eslintignore,.eslintrc*,.prettierrc*,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: resources/icon.png
+nsis:
+  artifactName: DynoIP-Setup-${version}.exe
+  shortcutName: DynoIP
+  uninstallDisplayName: DynoIP
+  createDesktopShortcut: always
+  oneClick: false
+  allowToChangeInstallationDirectory: true
