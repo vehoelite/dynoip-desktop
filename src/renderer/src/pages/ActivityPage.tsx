@@ -17,6 +17,7 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
+  Lock,
 } from 'lucide-react'
 import {
   type ActivityEvent,
@@ -28,6 +29,7 @@ import {
   getRequestLogHostnames,
 } from '../api/client'
 import { cn } from '@/lib/utils'
+import { useAuth } from '../hooks/useAuth'
 
 // ── Tabs ──
 
@@ -143,7 +145,22 @@ function RequestRow({ log }: { log: RequestLogEntry }) {
 
 // ── Main Page ──
 
+/** Max lookback hours by plan tier */
+function getMaxHours(plan?: string, isAdmin?: boolean): number {
+  if (isAdmin) return 720
+  if (plan === 'pro' || plan === 'enterprise') return 168
+  return 24
+}
+
+/** Human-friendly window label */
+function windowLabel(h: number): string {
+  if (h < 24) return `${h}h window`
+  return `${h / 24}d window`
+}
+
 export function ActivityPage() {
+  const { user } = useAuth()
+  const maxHours = getMaxHours(user?.plan, user?.is_admin)
   const [tab, setTab] = useState<TabId>('activity')
 
   // ── Activity State ──
@@ -252,7 +269,7 @@ export function ActivityPage() {
             <p className="text-xs text-text-muted">
               {tab === 'activity'
                 ? `${total} events · ${retention}h retention`
-                : `${logTotal} requests · ${hoursFilter}h window`}
+                : `${logTotal} requests · ${windowLabel(hoursFilter)}`}
             </p>
           </div>
         </div>
@@ -351,18 +368,25 @@ export function ActivityPage() {
           <div className="flex items-center gap-2 shrink-0 flex-wrap">
             {/* Time window */}
             <div className="flex items-center gap-1 bg-surface border border-border rounded-lg p-0.5">
-              {[1, 6, 24, 72, 168].map((h) => (
-                <button
-                  key={h}
-                  onClick={() => { setHoursFilter(h); setLogPage(1) }}
-                  className={cn(
-                    'px-2 py-1 rounded-md text-[10px] font-medium transition-colors',
-                    hoursFilter === h ? 'bg-primary/15 text-primary' : 'text-text-muted hover:text-text'
-                  )}
-                >
-                  {h < 24 ? `${h}h` : `${h / 24}d`}
-                </button>
-              ))}
+              {[1, 6, 24, 72, 168, 720].map((h) => {
+                const locked = h > maxHours
+                return (
+                  <button
+                    key={h}
+                    onClick={() => { if (!locked) { setHoursFilter(h); setLogPage(1) } }}
+                    title={locked ? `Upgrade to ${h <= 168 ? 'Pro' : 'Enterprise'} for ${h < 24 ? `${h}h` : `${h / 24}d`} retention` : undefined}
+                    className={cn(
+                      'px-2 py-1 rounded-md text-[10px] font-medium transition-colors flex items-center gap-0.5',
+                      locked
+                        ? 'text-text-muted/40 cursor-not-allowed'
+                        : hoursFilter === h ? 'bg-primary/15 text-primary' : 'text-text-muted hover:text-text'
+                    )}
+                  >
+                    {h < 24 ? `${h}h` : `${h / 24}d`}
+                    {locked && <Lock size={8} className="ml-0.5" />}
+                  </button>
+                )
+              })}
             </div>
 
             {/* Hostname filter */}

@@ -51,7 +51,7 @@ function RecordRow({
   const save = async () => {
     setSaving(true)
     try {
-      const update: DNSRecordUpdate = { content, ttl: parseInt(ttl) || 1 }
+      const update: DNSRecordUpdate = { content, ttl: parseInt(ttl) || 1, proxied: record.proxied }
       const updated = await updateDNSRecord(subdomain, record.id, update)
       onUpdated(updated)
       setEditing(false)
