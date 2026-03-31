@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import { AppShell } from './components/AppShell'
@@ -22,8 +23,16 @@ export default function App() {
 
 function AppRoutes() {
   const { user, loading } = useAuth()
+  const [ready, setReady] = useState(false)
 
-  if (loading) {
+  // Only show the fullscreen spinner for the initial session restore.
+  // Once the first load completes, never show it again — this prevents
+  // login/register operations from unmounting the LoginPage.
+  useEffect(() => {
+    if (!loading && !ready) setReady(true)
+  }, [loading, ready])
+
+  if (!ready) {
     return (
       <div className="flex h-screen items-center justify-center bg-bg">
         <Loader2 size={32} className="animate-spin text-primary" />

@@ -1,6 +1,6 @@
 {
   "name": "dynoip-desktop",
-  "version": "1.0.0",
+  "version": "1.0.0-beta.1",
   "description": "DynoIP — Dynamic DNS & Secure Tunnels",
   "main": "./out/main/index.js",
   "author": "Novamind Labs",

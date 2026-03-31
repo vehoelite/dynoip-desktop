@@ -28,7 +28,7 @@ export class ApiError extends Error {
 const TOKEN_KEY = 'dynoip_access_token';
 const REFRESH_KEY = 'dynoip_refresh_token';
 
-function getAccessToken(): string | null {
+export function getAccessToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
 
@@ -974,6 +974,92 @@ export async function removeDDNSWhitelistEmail(
     method: 'POST',
     body: JSON.stringify({ email }),
   });
+}
+
+// ── Billing / Stripe ──
+
+export async function createCheckout(plan: string): Promise<{ url: string }> {
+  return apiFetch<{ url: string }>('/billing/checkout', {
+    method: 'POST',
+    body: JSON.stringify({ plan }),
+  });
+}
+
+export async function createBillingPortal(): Promise<{ url: string }> {
+  return apiFetch<{ url: string }>('/billing/portal', { method: 'POST' });
+}
+
+// ── Request Logs ──
+
+export interface RequestLogEntry {
+  id: number;
+  hostname: string;
+  subdomain: string | null;
+  method: string;
+  path: string;
+  scheme: string;
+  status_code: number | null;
+  source_ip: string;
+  country: string | null;
+  user_agent: string | null;
+  referer: string | null;
+  rdns_hostname: string | null;
+  action: string | null;
+  reason: string | null;
+  actor_type: string | null;
+  tls: boolean;
+  bytes_sent: number;
+  created_at: string;
+}
+
+export interface RequestLogList {
+  logs: RequestLogEntry[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface RequestLogStats {
+  total_requests: number;
+  unique_ips: number;
+  blocked_requests: number;
+  allowed_requests: number;
+  top_countries: Array<{ country: string; count: number }>;
+  top_paths: Array<{ path: string; count: number }>;
+  top_ips: Array<{ ip: string; count: number }>;
+  hours: number;
+}
+
+export async function getRequestLogs(params: {
+  page?: number;
+  page_size?: number;
+  hostname?: string;
+  source_ip?: string;
+  country?: string;
+  method?: string;
+  action?: string;
+  search?: string;
+  hours?: number;
+} = {}): Promise<RequestLogList> {
+  const q = new URLSearchParams();
+  if (params.page) q.set('page', String(params.page));
+  if (params.page_size) q.set('page_size', String(params.page_size));
+  if (params.hostname) q.set('hostname', params.hostname);
+  if (params.source_ip) q.set('source_ip', params.source_ip);
+  if (params.country) q.set('country', params.country);
+  if (params.method) q.set('method', params.method);
+  if (params.action) q.set('action', params.action);
+  if (params.search) q.set('search', params.search);
+  if (params.hours) q.set('hours', String(params.hours));
+  return apiFetch<RequestLogList>(`/request-logs?${q.toString()}`);
+}
+
+export async function getRequestLogStats(hours = 24): Promise<RequestLogStats> {
+  return apiFetch<RequestLogStats>(`/request-logs/stats?hours=${hours}`);
+}
+
+export async function getRequestLogHostnames(): Promise<{ hostnames: Array<{ hostname: string; count: number }> }> {
+  return apiFetch(`/request-logs/hostnames`);
 }
 
 // ── Plans ──

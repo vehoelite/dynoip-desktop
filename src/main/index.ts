@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, session } from 'electron'
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, session, net } from 'electron'
 import { join } from 'path'
 import { existsSync, mkdirSync, createWriteStream, readFileSync, writeFileSync } from 'fs'
 import { ChildProcess, spawn } from 'child_process'
@@ -61,14 +61,12 @@ function createWindow(): void {
     backgroundColor: '#0a0a12',
     show: false,
     paintWhenInitiallyHidden: true,
-    backgroundThrottling: false,
     icon: join(__dirname, '../../resources/icon.png'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      backgroundThrottling: false,
       webSecurity: true
     }
   })
@@ -195,6 +193,64 @@ ipcMain.on('store:clearTokens', () => {
   }
   newtInstances.clear()
   store.delete('activeNewts')
+})
+
+// ── Forum SSO (main-process cookie injection) ────────────────────────────────
+const FORUM_CALLBACK = 'https://forum.dyno-ip.online/app.php/dynoip_auth/callback'
+
+ipcMain.handle('forum:authenticate', async (_event, token: string) => {
+  try {
+    // Clear all existing forum cookies so stale sessions don't prevent re-auth
+    const cookies = await session.defaultSession.cookies.get({ domain: 'forum.dyno-ip.online' })
+    for (const c of cookies) {
+      await session.defaultSession.cookies.remove(`https://forum.dyno-ip.online${c.path || '/'}`, c.name)
+    }
+
+    const url = `${FORUM_CALLBACK}?token=${encodeURIComponent(token)}`
+    // Hit the callback — it validates the JWT, creates a phpBB session, and
+    // responds with Set-Cookie + a 302 redirect.  We use redirect:'manual'
+    // so we can capture the cookies from the 302 response.
+    const resp = await net.fetch(url, { redirect: 'manual', bypassCustomProtocolHandlers: true })
+
+    // Extract Set-Cookie headers from the response
+    const raw = resp.headers.getSetCookie()
+    if (!raw || raw.length === 0) return { ok: false, reason: 'no cookies' }
+
+    // Inject each cookie into Electron's default session cookie store
+    for (const cookieStr of raw) {
+      const parts = cookieStr.split(';').map(p => p.trim())
+      const [nameVal, ...attrs] = parts
+      const eqIdx = nameVal.indexOf('=')
+      if (eqIdx < 0) continue
+      const name = nameVal.substring(0, eqIdx)
+      const value = nameVal.substring(eqIdx + 1)
+
+      const cookie: Electron.CookiesSetDetails = {
+        url: 'https://forum.dyno-ip.online',
+        name,
+        value,
+        secure: true,
+        sameSite: 'no_restriction',
+      }
+
+      for (const attr of attrs) {
+        const lower = attr.toLowerCase()
+        if (lower.startsWith('domain=')) cookie.domain = attr.split('=')[1]
+        if (lower.startsWith('path=')) cookie.path = attr.split('=')[1]
+        if (lower === 'httponly') cookie.httpOnly = true
+        if (lower.startsWith('expires=')) {
+          const d = new Date(attr.split('=').slice(1).join('='))
+          if (!isNaN(d.getTime())) cookie.expirationDate = d.getTime() / 1000
+        }
+      }
+
+      await session.defaultSession.cookies.set(cookie)
+    }
+
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, reason: String(err) }
+  }
 })
 
 // ── Newt Agent Management ───────────────────────────────────────────────────
@@ -417,7 +473,7 @@ if (!gotLock) {
           responseHeaders: {
             ...details.responseHeaders,
             'Content-Security-Policy': [
-              "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://dyno-ip.com https://api.ipify.org"
+              "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://dyno-ip.com https://api.ipify.org; frame-src https://forum.dyno-ip.online"
             ]
           }
         })

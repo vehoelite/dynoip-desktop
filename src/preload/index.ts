@@ -25,6 +25,10 @@ const electronAPI = {
     ipcRenderer.send('store:setTokens', tokens),
   clearTokens: () => ipcRenderer.send('store:clearTokens'),
 
+  // Forum SSO — authenticates via main process, injects cookies
+  forumAuthenticate: (token: string): Promise<{ ok: boolean; reason?: string }> =>
+    ipcRenderer.invoke('forum:authenticate', token),
+
   // Newt agent (hidden tunnel connector)
   newtStatus: (key: string): Promise<{ installed: boolean; running: boolean }> =>
     ipcRenderer.invoke('newt:status', key),

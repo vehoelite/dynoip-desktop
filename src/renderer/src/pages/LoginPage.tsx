@@ -352,7 +352,7 @@ export default function LoginPage() {
 
         {/* Footer */}
         <p className="mt-6 text-center text-xs text-text-muted">
-          © {new Date().getFullYear()} Dyno-IP · v1.0.0
+          © {new Date().getFullYear()} Dyno-IP · v1.0.0-beta.1
         </p>
       </div>
     </div>

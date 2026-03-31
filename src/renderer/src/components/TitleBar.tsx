@@ -17,9 +17,7 @@ export function TitleBar() {
     >
       {/* Logo + Title */}
       <div className="flex items-center gap-2.5 pl-3">
-        <div className="w-5 h-5 rounded bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-          <span className="text-[10px] font-black text-bg">◈</span>
-        </div>
+        <img src="icon.png" alt="" className="w-5 h-5" draggable={false} />
         <span className="text-xs font-semibold tracking-[0.2em] text-text-dim uppercase">
           Dyno-IP
         </span>

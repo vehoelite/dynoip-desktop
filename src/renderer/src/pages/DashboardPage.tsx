@@ -1,10 +1,11 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { Globe, Network, Server, Wifi, Play, Loader2, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react'
+import { Globe, Network, Server, Wifi, Play, Pause, Loader2, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react'
 import {
   type DynamicIP,
   type UserTunnel,
   listSubdomains,
   listTunnels,
+  getAccessToken,
 } from '../api/client'
 
 // ── Types ──
@@ -27,6 +28,10 @@ type TestResult = {
 
 export function DashboardPage() {
   const [subdomains, setSubdomains] = useState<DynamicIP[]>([])
+  const [globeAnimated, setGlobeAnimated] = useState(() => {
+    const saved = localStorage.getItem('dynoip-globe-animated')
+    return saved === null ? true : saved === 'true'
+  })
   const [tunnels, setTunnels] = useState<UserTunnel[]>([])
   const [publicIP, setPublicIP] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -35,6 +40,21 @@ export function DashboardPage() {
   const testRef = useRef<HTMLDivElement>(null)
   const [healthMap, setHealthMap] = useState<Record<string, 'ok' | 'fail' | 'timeout'>>({})
   const healthRunning = useRef(false)
+  const [forumReady, setForumReady] = useState(false)
+
+  // Forum SSO: inject cookies via main process before loading iframe
+  useEffect(() => {
+    let cancelled = false
+    async function auth() {
+      const token = getAccessToken()
+      if (token && window.electron?.forumAuthenticate) {
+        await window.electron.forumAuthenticate(token)
+      }
+      if (!cancelled) setForumReady(true)
+    }
+    auth()
+    return () => { cancelled = true }
+  }, [])
 
   // Quick health probe — parallel HEAD requests with 5s timeout
   const runHealthProbe = useCallback(async (hosts: string[]) => {
@@ -192,25 +212,45 @@ export function DashboardPage() {
   }, [subdomains, tunnels, testRunning])
 
   return (
-    <div className="h-full flex flex-col p-6 gap-6">
-      {/* Hero: Globe + Status Ticker */}
+    <div className="h-full flex flex-col p-6 gap-4">
+      {/* Hero: Globe + Status/Test combined */}
       <div className="flex gap-6 items-stretch h-[280px] shrink-0">
         {/* Globe */}
         <div className="flex-1 relative rounded-xl border border-border bg-black overflow-hidden flex items-center justify-center">
-          <video
-            src="globe.mp4"
-            autoPlay
-            loop
-            muted
-            playsInline
-            className="h-[260px] w-auto object-contain"
-          />
+          {globeAnimated ? (
+            <video
+              src="globe.mp4"
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="h-[260px] w-auto object-contain"
+            />
+          ) : (
+            <img
+              src="globe.png"
+              alt="Globe"
+              className="h-[260px] w-auto object-contain"
+            />
+          )}
           <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+          {/* Globe animation toggle */}
+          <button
+            onClick={() => {
+              const next = !globeAnimated
+              setGlobeAnimated(next)
+              localStorage.setItem('dynoip-globe-animated', String(next))
+            }}
+            className="absolute top-2 left-2 p-1.5 rounded-md bg-black/60 hover:bg-black/80 text-text-dim hover:text-primary transition-colors"
+            title={globeAnimated ? 'Pause globe animation' : 'Play globe animation'}
+          >
+            {globeAnimated ? <Pause size={14} /> : <Play size={14} />}
+          </button>
         </div>
 
-        {/* Status Ticker */}
+        {/* Live Status + Connection Test combined */}
         <div className="w-80 rounded-xl border border-border bg-surface flex flex-col overflow-hidden">
-          <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+          <div className="px-4 py-2.5 border-b border-border flex items-center gap-2">
             <Wifi size={14} className="text-primary" />
             <span className="text-xs font-semibold tracking-wider text-text-dim uppercase">
               Live Status
@@ -221,7 +261,7 @@ export function DashboardPage() {
               <div className="ml-auto w-2 h-2 rounded-full bg-success animate-pulse" />
             )}
           </div>
-          <div className="flex-1 overflow-hidden relative">
+          <div className="flex-1 overflow-hidden relative min-h-0">
             <div className="absolute inset-0 font-mono text-xs leading-6 text-text-dim p-3 space-y-0.5 overflow-y-auto scrollbar-none">
               {loading ? (
                 <div className="flex items-center justify-center h-full text-text-muted">
@@ -237,8 +277,39 @@ export function DashboardPage() {
                 ))
               )}
             </div>
-            <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-surface to-transparent pointer-events-none" />
+            <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-surface to-transparent pointer-events-none" />
           </div>
+          {/* Connection Test section */}
+          <div className="border-t border-border px-4 py-2 flex items-center justify-between">
+            <span className="text-[10px] font-semibold tracking-wider text-text-dim uppercase">
+              Connection Test
+            </span>
+            <button
+              onClick={runTest}
+              disabled={testRunning || (subdomains.length === 0 && tunnels.length === 0)}
+              className="px-2.5 py-1 rounded-md text-[11px] font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
+            >
+              {testRunning ? (
+                <>
+                  <Loader2 size={10} className="animate-spin" /> Running...
+                </>
+              ) : (
+                <>
+                  <Play size={10} /> Run Test
+                </>
+              )}
+            </button>
+          </div>
+          {testResults.length > 0 && (
+            <div
+              ref={testRef}
+              className="max-h-[90px] overflow-y-auto scrollbar-none border-t border-border px-3 py-2 font-mono text-xs space-y-0.5"
+            >
+              {testResults.map((r, i) => (
+                <TestResultLine key={i} result={r} />
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -278,44 +349,15 @@ export function DashboardPage() {
         />
       </div>
 
-      {/* Connection Test */}
-      <div className="flex-1 rounded-xl border border-border bg-surface overflow-hidden flex flex-col min-h-[120px]">
-        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-          <span className="text-xs font-semibold tracking-wider text-text-dim uppercase">
-            Connection Test
-          </span>
-          <button
-            onClick={runTest}
-            disabled={testRunning || (subdomains.length === 0 && tunnels.length === 0)}
-            className="px-3 py-1 rounded-md text-xs font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
-          >
-            {testRunning ? (
-              <>
-                <Loader2 size={12} className="animate-spin" /> Running...
-              </>
-            ) : (
-              <>
-                <Play size={12} /> Run Test
-              </>
-            )}
-          </button>
-        </div>
-        <div
-          ref={testRef}
-          className="flex-1 p-4 font-mono text-xs overflow-y-auto scrollbar-none"
-        >
-          {testResults.length === 0 ? (
-            <div className="h-full flex items-center justify-center text-text-muted">
-              Click "Run Test" to check all your services
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {testResults.map((r, i) => (
-                <TestResultLine key={i} result={r} />
-              ))}
-            </div>
-          )}
-        </div>
+      {/* Forum embed — loaded after main-process cookie injection */}
+      <div className="flex-1 rounded-xl border border-border overflow-hidden min-h-[200px]">
+        {forumReady && <iframe
+          src="https://forum.dyno-ip.online"
+          className="w-full h-full border-0"
+          loading="lazy"
+          sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
+          title="Dyno-IP Forum"
+        />}
       </div>
     </div>
   )
